@@ -2,10 +2,9 @@ scikit-learn==1.5.0
 streamlit>=1.25.0
 joblib==1.3.2
 pandas==2.2.2
-numpy==1.24.4
+numpy>=1.26.0 # THIS LINE IS THE KEY CHANGE
 matplotlib
 plotly
-
 
 
 
