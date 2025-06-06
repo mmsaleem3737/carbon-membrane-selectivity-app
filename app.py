@@ -153,7 +153,12 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 🧠 Define custom transformer
+import streamlit as st
+import pandas as pd
+import joblib
+from sklearn.base import BaseEstimator, TransformerMixin
+
+# ✅ Define the custom transformer BEFORE loading the model
 class RarePolymerGrouper(BaseEstimator, TransformerMixin):
     def __init__(self, threshold=5):
         self.threshold = threshold
@@ -175,15 +180,19 @@ class RarePolymerGrouper(BaseEstimator, TransformerMixin):
         grouped = col.apply(lambda x: x if x in self.frequent_polymers_ else "Other")
         return grouped.to_frame()
 
-# 📊 Load model with better error handling
+# ✅ Load the pipeline using joblib — class now known to joblib
 @st.cache_resource
 def load_pipeline():
     try:
         return joblib.load("PolyMemCO2Pipeline.joblib")
     except FileNotFoundError:
-        st.error("Model file not found. Please ensure 'PolyMemCO2Pipeline.joblib' is in the app directory.")
+        st.error("❌ Model file not found. Please ensure 'PolyMemCO2Pipeline.joblib' is in the same directory.")
+        return None
+    except Exception as e:
+        st.error(f"❌ Error loading model: {e}")
         return None
 
+# 🔃 Load the model into a global variable
 model = load_pipeline()
 
 # 🎯 Create gauge chart for visualization
