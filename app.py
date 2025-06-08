@@ -671,4 +671,116 @@ def main():
                 **Performance Metrics:**
                 - **R² Score:** 0.9175 (excellent)
                 - **MAE:** 1.76 (low error)
-                - **RMSE:** 3.11 (
+                - **RMSE:** 3.11 (robust predictions)
+                
+                **Algorithm:** Random Forest Regressor with optimized hyperparameters
+                """)
+
+        with col_info3:
+            with st.expander("🔧 Technical Information"):
+                st.markdown(f"""
+                **App Details:**
+                - **Framework:** Streamlit
+                - **ML Library:** Scikit-learn {st.session_state.get('sklearn_version', 'Unknown')}
+                - **Model File:** {model_file or 'Not loaded'}
+                - **Version:** 2.0.0
+                - **Developer:** Enhanced by Claude
+                
+                **Features:**
+                - Real-time ML predictions
+                - Interactive visualizations
+                - Comprehensive input validation
+                - Performance comparison tools
+                - Enhanced error handling
+                - Modern responsive UI
+                """)
+
+    else:
+        # Show comprehensive troubleshooting guide when model fails to load
+        st.error("## 🚨 Model Loading Failed")
+        
+        tab1, tab2, tab3 = st.tabs(["🔧 Quick Fix", "📋 Diagnostics", "🛠️ Advanced"])
+        
+        with tab1:
+            st.markdown("""
+            ### 🎯 Most Common Solutions:
+            
+            1. **Check file names** - Rename your model file to one of these:
+               ```
+               PolyMemCO2Pipeline.joblib
+               PolyMemCO2Pipeline.pkl
+               model.joblib
+               model.pkl
+               ```
+            
+            2. **Update sklearn version** in requirements.txt:
+               ```
+               scikit-learn==1.3.2
+               ```
+            
+            3. **Retrain your model** with current sklearn version if compatibility issues persist.
+            """)
+        
+        with tab2:
+            st.markdown("### 🔍 System Diagnostics")
+            
+            # Show current environment info
+            try:
+                import sklearn
+                st.success(f"✅ **sklearn version:** {sklearn.__version__}")
+            except ImportError:
+                st.error("❌ **sklearn not available** - Install with `pip install scikit-learn`")
+            
+            # Show available files
+            current_files = [f for f in os.listdir('.') if f.endswith(('.joblib', '.pkl'))]
+            if current_files:
+                st.info(f"📁 **Found files:** {', '.join(current_files)}")
+            else:
+                st.warning("⚠️ **No .joblib/.pkl files found**")
+                
+            # Show directory contents
+            with st.expander("📂 Directory Contents"):
+                all_files = os.listdir('.')
+                st.write(all_files)
+        
+        with tab3:
+            st.markdown("""
+            ### 🛠️ Advanced Troubleshooting
+            
+            **Model Version Compatibility:**
+            ```python
+            # When saving your model, ensure compatibility:
+            import joblib
+            import pickle
+            
+            # Method 1: Use joblib (recommended)
+            joblib.dump(your_model, 'PolyMemCO2Pipeline.joblib')
+            
+            # Method 2: Use pickle (fallback)
+            with open('PolyMemCO2Pipeline.pkl', 'wb') as f:
+                pickle.dump(your_model, f)
+            ```
+            
+            **Custom Transformer Issues:**
+            - Ensure `RarePolymerGrouper` class matches training version
+            - Consider using `sklearn.compose.ColumnTransformer` for better compatibility
+            
+            **Environment Setup:**
+            ```bash
+            pip install streamlit scikit-learn==1.3.2 pandas numpy plotly
+            ```
+            """)
+
+    # Footer
+    st.markdown("---")
+    st.markdown("""
+    <div style="text-align: center; padding: 2rem; background: #f8f9fa; border-radius: 10px; margin-top: 2rem;">
+        <h4>🚀 Enhanced CO₂/N₂ Selectivity Predictor</h4>
+        <p><em>Developed with ❤️ using Streamlit, Scikit-learn & Plotly</em></p>
+        <p><strong>For educational and research purposes only</strong></p>
+        <small>Version 2.0.0 | Enhanced UI & Error Handling</small>
+    </div>
+    """, unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    main()
