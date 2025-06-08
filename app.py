@@ -2,10 +2,22 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import pickle
-import joblib
 import time
 import plotly.graph_objects as go
 from sklearn.base import BaseEstimator, TransformerMixin
+
+# Try importing joblib, fallback to sklearn.externals.joblib if needed
+try:
+    import joblib
+    JOBLIB_AVAILABLE = True
+except ImportError:
+    try:
+        from sklearn.externals import joblib
+        JOBLIB_AVAILABLE = True
+        st.warning("⚠️ Using sklearn.externals.joblib (older sklearn version)")
+    except ImportError:
+        JOBLIB_AVAILABLE = False
+        st.error("❌ joblib not available - will use pickle only")
 
 # ✅ Page configuration - must be first
 st.set_page_config(
@@ -43,29 +55,35 @@ def load_pipeline():
     model_files = ["PolyMemCO2Pipeline.joblib", "PolyMemCO2Pipeline.pkl", "model.joblib", "model.pkl"]
     
     for model_file in model_files:
-        # Method 1: Try joblib first
-        try:
-            model = joblib.load(model_file)
-            st.success(f"✅ Model loaded successfully with joblib from {model_file}!")
-            return model, model_file
-        except FileNotFoundError:
-            continue
-        except Exception as e1:
-            st.warning(f"⚠️ joblib failed for {model_file}: {str(e1)[:100]}...")
-            
-            # Method 2: Try pickle as fallback
+        # Method 1: Try joblib first (if available)
+        if JOBLIB_AVAILABLE:
             try:
-                with open(model_file, 'rb') as f:
-                    model = pickle.load(f)
-                st.success(f"✅ Model loaded successfully with pickle from {model_file}!")
+                model = joblib.load(model_file)
+                st.success(f"✅ Model loaded successfully with joblib from {model_file}!")
                 return model, model_file
             except FileNotFoundError:
                 continue
-            except Exception as e2:
+            except Exception as e1:
+                st.warning(f"⚠️ joblib failed for {model_file}: {str(e1)[:100]}...")
+        else:
+            e1 = "joblib not available"
+            
+        # Method 2: Try pickle as fallback
+        try:
+            with open(model_file, 'rb') as f:
+                model = pickle.load(f)
+            st.success(f"✅ Model loaded successfully with pickle from {model_file}!")
+            return model, model_file
+        except FileNotFoundError:
+            continue
+        except Exception as e2:
+            if JOBLIB_AVAILABLE:
                 st.error(f"❌ Both joblib and pickle failed for {model_file}:")
                 st.error(f"   - joblib error: {str(e1)[:100]}...")
-                st.error(f"   - pickle error: {str(e2)[:100]}...")
-                continue
+            else:
+                st.error(f"❌ Pickle failed for {model_file}:")
+            st.error(f"   - pickle error: {str(e2)[:100]}...")
+            continue
     
     # If no model file found
     st.error("❌ No model file found. Tried: " + ", ".join(model_files))
@@ -74,7 +92,7 @@ def load_pipeline():
     try:
         import sklearn
         st.error(f"   - Current sklearn version: {sklearn.__version__}")
-        st.error("   - Try updating requirements.txt with a different sklearn version")
+        st.error("   - joblib available: " + str(JOBLIB_AVAILABLE))
     except:
         st.error("   - sklearn not available")
     
@@ -124,6 +142,7 @@ model, model_file = load_pipeline()
 try:
     import sklearn
     st.sidebar.info(f"🔧 scikit-learn version: {sklearn.__version__}")
+    st.sidebar.info(f"📦 joblib available: {JOBLIB_AVAILABLE}")
     if model_file:
         st.sidebar.success(f"📁 Model file: {model_file}")
 except:
