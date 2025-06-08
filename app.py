@@ -24,7 +24,7 @@ class RarePolymerGrouper(BaseEstimator, TransformerMixin):
         if isinstance(X, pd.DataFrame):
             col = X.iloc[:, 0]
         else:
-            col = pd.Series(X[:, 0])
+            col = pd.Series(X[:, 0]) if len(X.shape) > 1 else pd.Series(X)
         counts = col.value_counts()
         self.frequent_polymers_ = set(counts[counts >= self.threshold].index)
         return self
@@ -33,46 +33,59 @@ class RarePolymerGrouper(BaseEstimator, TransformerMixin):
         if isinstance(X, pd.DataFrame):
             col = X.iloc[:, 0]
         else:
-            col = pd.Series(X[:, 0])
+            col = pd.Series(X[:, 0]) if len(X.shape) > 1 else pd.Series(X)
         grouped = col.apply(lambda x: x if x in self.frequent_polymers_ else "Other")
-        return grouped.to_frame()
+        return grouped.to_frame() if isinstance(X, pd.DataFrame) else grouped.values.reshape(-1, 1)
 
 # ✅ Enhanced model loading with multiple methods
 @st.cache_resource
 def load_pipeline():
-    model_file = "PolyMemCO2Pipeline.joblib"
+    model_files = ["PolyMemCO2Pipeline.joblib", "PolyMemCO2Pipeline.pkl", "model.joblib", "model.pkl"]
     
-    # Method 1: Try joblib first
-    try:
-        model = joblib.load(model_file)
-        st.success("✅ Model loaded successfully with joblib!")
-        return model
-    except Exception as e1:
-        st.warning(f"⚠️ joblib failed: {str(e1)[:100]}...")
-        
-        # Method 2: Try pickle as fallback
+    for model_file in model_files:
+        # Method 1: Try joblib first
         try:
-            with open(model_file, 'rb') as f:
-                model = pickle.load(f)
-            st.success("✅ Model loaded successfully with pickle!")
-            return model
-        except Exception as e2:
-            st.error(f"❌ Both joblib and pickle failed:")
-            st.error(f"   - joblib error: {str(e1)[:100]}...")
-            st.error(f"   - pickle error: {str(e2)[:100]}...")
+            model = joblib.load(model_file)
+            st.success(f"✅ Model loaded successfully with joblib from {model_file}!")
+            return model, model_file
+        except FileNotFoundError:
+            continue
+        except Exception as e1:
+            st.warning(f"⚠️ joblib failed for {model_file}: {str(e1)[:100]}...")
             
-            # Method 3: Show detailed sklearn version info
+            # Method 2: Try pickle as fallback
             try:
-                import sklearn
-                st.error(f"   - Current sklearn version: {sklearn.__version__}")
-                st.error("   - Try updating requirements.txt with a different sklearn version")
-            except:
-                pass
-            
-            return None
+                with open(model_file, 'rb') as f:
+                    model = pickle.load(f)
+                st.success(f"✅ Model loaded successfully with pickle from {model_file}!")
+                return model, model_file
+            except FileNotFoundError:
+                continue
+            except Exception as e2:
+                st.error(f"❌ Both joblib and pickle failed for {model_file}:")
+                st.error(f"   - joblib error: {str(e1)[:100]}...")
+                st.error(f"   - pickle error: {str(e2)[:100]}...")
+                continue
+    
+    # If no model file found
+    st.error("❌ No model file found. Tried: " + ", ".join(model_files))
+    
+    # Show detailed sklearn version info
+    try:
+        import sklearn
+        st.error(f"   - Current sklearn version: {sklearn.__version__}")
+        st.error("   - Try updating requirements.txt with a different sklearn version")
+    except:
+        st.error("   - sklearn not available")
+    
+    return None, None
 
 # 🎯 Create gauge chart for visualization
 def create_gauge_chart(value, title="CO₂/N₂ Selectivity"):
+    # Ensure value is numeric and handle edge cases
+    value = float(value) if value is not None else 0
+    value = max(0, min(200, value))  # Clamp between 0 and 200
+    
     fig = go.Figure(go.Indicator(
         mode = "gauge+number+delta",
         value = value,
@@ -104,13 +117,15 @@ def create_gauge_chart(value, title="CO₂/N₂ Selectivity"):
     )
     return fig
 
-# 🔃 Load the model into a global variable
-model = load_pipeline()
+# 🔃 Load the model into global variables
+model, model_file = load_pipeline()
 
 # Show sklearn version for debugging
 try:
     import sklearn
     st.sidebar.info(f"🔧 scikit-learn version: {sklearn.__version__}")
+    if model_file:
+        st.sidebar.success(f"📁 Model file: {model_file}")
 except:
     st.sidebar.error("❌ scikit-learn not available")
 
@@ -184,6 +199,7 @@ if model is not None:
                 polymer_type = st.text_input("Custom Polymer Type:", placeholder="Enter your polymer type...", help="Specify your custom polymer type")
             else:
                 polymer_type = polymer_type_choice
+                
         with subcol2:
             polymer_options = [
                 "Polyimide", "Polysulfone", "Polyetherimide", "Poly(vinyl chloride)", 
@@ -246,9 +262,9 @@ if model is not None:
         # 🔮 Prediction logic
         if predict_button:
             validation_errors = []
-            if polymer_type_choice == "Other" and not polymer_type:
+            if polymer_type_choice == "Other" and not polymer_type.strip():
                 validation_errors.append("Please enter a custom Polymer Type.")
-            if polymer_choice == "Other" and not polymer:
+            if polymer_choice == "Other" and not polymer.strip():
                 validation_errors.append("Please enter a custom Polymer.")
             
             if validation_errors:
@@ -270,13 +286,18 @@ if model is not None:
                             "C3F8_Permeability": [C3F8_Permeability]
                         }
                         input_df = pd.DataFrame(input_data)
+                        
+                        # Make prediction
                         prediction = model.predict(input_df)[0]
+                        prediction = float(prediction)  # Ensure it's a float
                         
                         st.success(f"🎯 **Predicted CO₂/N₂ Selectivity: {prediction:.2f}**")
                         
+                        # Create and display gauge chart
                         gauge_fig = create_gauge_chart(prediction)
                         st.plotly_chart(gauge_fig, use_container_width=True)
                         
+                        # Interpretation based on prediction value
                         if prediction < 10:
                             interpretation = "⚠️ **Low Selectivity** - May not be suitable for efficient separation."
                         elif prediction < 30:
@@ -289,6 +310,7 @@ if model is not None:
 
                     except Exception as e:
                         st.error(f"❌ Prediction failed: {str(e)}")
+                        st.error("Please check your input values and model compatibility.")
 
     # 📚 Additional information sections at the bottom
     st.markdown("---")
@@ -299,26 +321,39 @@ if model is not None:
         with st.expander("🔬 About CO₂/N₂ Selectivity"):
             st.markdown("""
             **CO₂/N₂ Selectivity** is a crucial parameter in gas separation membranes, representing the ability of a membrane to preferentially allow CO₂ to pass through while blocking N₂.
-            - Higher selectivity = Better separation efficiency
-            - Typical industrial targets: 20-50+
+            
+            - **Higher selectivity** = Better separation efficiency
+            - **Typical industrial targets**: 20-50+
+            - **Applications**: Carbon capture, natural gas purification, air separation
             """)
 
     with col_info2:
         with st.expander("📊 Model Performance Details"):
             st.markdown("""
             Our machine learning model was trained on a comprehensive dataset of polymer membrane properties.
+            
             - **Training samples:** 1,407
-            - **Features:** 63 input parameters
+            - **Features:** 63 input parameters  
+            - **R² Score:** 0.9175
             - **MAE:** 1.76
             - **RMSE:** 3.11
+            - **Algorithm:** Random Forest Regressor
             """)
 
     with col_info3:
-        with st.expander("🔧 App & Model Info"):
-            st.markdown("""
-            This app uses a Scikit-learn pipeline and a RandomForestRegressor model.
+        with st.expander("🔧 Technical Information"):
+            st.markdown(f"""
+            **App Details:**
+            - **Framework:** Streamlit
+            - **ML Library:** Scikit-learn {st.session_state.get('sklearn_version', 'Unknown')}
+            - **Model File:** {model_file or 'Not loaded'}
+            - **Version:** 1.2.0
             - **Developer:** Saleem
-            - **Version:** 1.1.0
+            
+            **Features:**
+            - Real-time predictions
+            - Interactive visualizations
+            - Comprehensive input validation
             """)
 
 else:
@@ -327,30 +362,53 @@ else:
     st.markdown("""
     ### 🔧 Troubleshooting Steps:
     
-    1. **Check sklearn version compatibility:**
-       - Try different versions in requirements.txt:
-       - `scikit-learn==1.2.2` (older, more stable)
-       - `scikit-learn==1.3.2` (recommended)
-       - `scikit-learn==1.4.0` (newer)
+    1. **Check model file location:**
+       - Ensure model file is in the same directory as `app.py`
+       - Supported filenames: `PolyMemCO2Pipeline.joblib`, `PolyMemCO2Pipeline.pkl`, `model.joblib`, `model.pkl`
     
-    2. **Recreate the model:**
-       - The model was created with a different sklearn version
+    2. **Check sklearn version compatibility:**
+       ```
+       # Try different versions in requirements.txt:
+       scikit-learn==1.2.2  # (older, more stable)
+       scikit-learn==1.3.2  # (recommended)
+       scikit-learn==1.4.0  # (newer)
+       scikit-learn==1.5.1  # (current)
+       ```
+    
+    3. **Model recreation:**
+       - The model may have been created with a different sklearn version
        - You may need to retrain and save the model with your current sklearn version
     
-    3. **Alternative file formats:**
+    4. **Alternative formats:**
        - Try saving the model as `.pkl` instead of `.joblib`
-       - Use `pickle.dump()` instead of `joblib.dump()`
+       - Use `pickle.dump()` instead of `joblib.dump()` when creating the model
     
-    4. **Check file location:**
-       - Ensure `PolyMemCO2Pipeline.joblib` is in the same directory as `app.py`
+    5. **Custom transformer issue:**
+       - Ensure the `RarePolymerGrouper` class matches the one used during training
     """)
     
     # Show current environment info
     try:
         import sklearn
-        st.info(f"Current sklearn version: {sklearn.__version__}")
-    except:
-        st.error("sklearn not available")
+        st.info(f"**Current sklearn version:** {sklearn.__version__}")
+        st.session_state['sklearn_version'] = sklearn.__version__
+    except ImportError:
+        st.error("**sklearn not available** - Please install scikit-learn")
+    
+    # Show what files exist in current directory
+    import os
+    current_files = [f for f in os.listdir('.') if f.endswith(('.joblib', '.pkl'))]
+    if current_files:
+        st.info(f"**Found model files:** {', '.join(current_files)}")
+    else:
+        st.warning("**No model files found** in current directory")
+
+# Store sklearn version in session state
+try:
+    import sklearn
+    st.session_state['sklearn_version'] = sklearn.__version__
+except:
+    pass
 
 # Footer
 st.markdown("---")
